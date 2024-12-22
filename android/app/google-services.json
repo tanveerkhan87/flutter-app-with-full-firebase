@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "363787636284",
+    "project_id": "unitaskfb",
+    "storage_bucket": "unitaskfb.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:363787636284:android:c7679abf33a3f0216c3d39",
+        "android_client_info": {
+          "package_name": "com.example.fb_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAMeCgwqY5KVLGYg5VLdKbhoHKiVvydq0U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
