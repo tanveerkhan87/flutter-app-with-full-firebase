@@ -1,7 +1,3 @@
-
-
-import 'dart:ffi';
-
 import 'package:fb_app/utils/utility.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -16,64 +12,87 @@ class AddPost extends StatefulWidget {
 }
 
 class _AddPostState extends State<AddPost> {
-
-  // here we work for real time database firebase
   final PostCon = TextEditingController();
-  final  databaseref= FirebaseDatabase.instance.ref("Post"); // we created ref i.e  post as table called it node in firebase
-  bool loading= false;
-  final User? user = FirebaseAuth.instance.currentUser; // we declare this to help each user access there own data
+  // This ref points to the "Post" node, where all posts will be stored.
+  final DatabaseReference databaseref = FirebaseDatabase.instance.ref("Post");
+  final FirebaseAuth auth = FirebaseAuth.instance;
+  bool loading = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("ADD Posts"),
+        title: const Text("Add Post"),
       ),
-
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 18.0),
         child: Column(
           children: [
-            SizedBox(height: 33,),
+            const SizedBox(height: 33),
             TextFormField(
-                controller: PostCon,
-                maxLines: 5,
-                decoration: InputDecoration(
-                  hintText: "What is in your mind",
-                  border: OutlineInputBorder(),
-                )
+              controller: PostCon,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                hintText: "What is in your mind?",
+                border: OutlineInputBorder(),
+              ),
             ),
-            SizedBox(height: 55),
+            const SizedBox(height: 55),
             RoundButton(
-                loading: loading,
-                title: "Add", onTap: (){
-              setState(() {
-                loading = true;
-              });
-              //1st we created ref then give specific time as unique id then we set data in table by key value
-              String id = DateTime.now().millisecondsSinceEpoch.toString();//helps to handle delete update etc by same id
-              // node ref  i.e post as table  and its  child id etc
-              databaseref.child(id).set({
-                "id" : (id),
-                "title" : PostCon.text.toString(),
-                'user_id': user!.uid, // Store the user ID with the post
-
-              }).then((vaule){
-                setState(() {
-                  loading = false;
-                });
-                Utility().toastMessage("Post ADD");
-              }).onError((error, stacktrace){
-                setState(() {
-                  loading = false;
-                });
-                Utility().toastMessage(error.toString());
-
-              });
-
-            })
+              loading: loading,
+              title: "Add",
+              onTap: () {
+                addPost();
+              },
+            )
           ],
         ),
       ),
     );
+  }
+
+  void addPost() {
+    setState(() {
+      loading = true;
+    });
+
+    final User? user = auth.currentUser;
+    if (user == null) {
+      Utility().toastMessage("User not logged in!");
+      setState(() {
+        loading = false;
+      });
+      return;
+    }
+
+
+    // Use .push() to generate a unique, chronologically-sortable key for the new post.
+    // This is the standard Firebase way .
+    final newPostRef = databaseref.push();
+    final String postId = newPostRef.key!; // This is the unique ID.
+
+    // Now we set the data at this new, unique location.
+    newPostRef.set({
+      'id': postId, // Store the unique ID within the post data itself.
+      'title': PostCon.text.toString(),
+      'user_id': user.uid, // Store the user's ID with the post ***
+    }).then((value) {
+      Utility().toastMessage("Post Added");
+      setState(() {
+        loading = false;
+      });
+      Navigator.pop(context); // Go back to the previous screen after adding
+    }).onError((error, stackTrace) {
+      Utility().toastMessage(error.toString());
+      setState(() {
+        loading = false;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    PostCon.dispose();
+    super.dispose();
   }
 }
