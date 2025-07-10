@@ -1,10 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fb_app/ui/auth/login.dart';
 import 'package:fb_app/utils/utility.dart';
-import 'package:fb_app/widgets/round_button.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-
+import 'package:flutter/services.dart';
 import 'add_firestore_data.dart';
 
 class FirestoreListScreen extends StatefulWidget {
@@ -15,185 +14,184 @@ class FirestoreListScreen extends StatefulWidget {
 }
 
 class _FirestoreListScreenState extends State<FirestoreListScreen> {
-
   final FirebaseAuth auth = FirebaseAuth.instance;
   final TextEditingController searchFilter = TextEditingController();
   final TextEditingController editController = TextEditingController();
 
-// Stream of real-time snapshots from the "Users" collection in Firestore.
-  final fireStore = FirebaseFirestore.instance.collection("Users").snapshots();
-// Reference to the "Users" collection for CRUD operations.
+  // Reference to the "Users" collection for CRUD operations.
   final usersCollection = FirebaseFirestore.instance.collection("Users");
-// Current logged-in user from Firebase Authentication.
-  final User? user = FirebaseAuth.instance.currentUser;
-
 
   @override
   Widget build(BuildContext context) {
+    //  Get the current user from FirebaseAuth. This is crucial.
+    final User? user = auth.currentUser;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Firestore"),
-        actions: [
-          IconButton(
-            onPressed: () {
-              // Sign out user and navigate back to login screen
-              auth.signOut().then((_) {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (context) => Login()),
-                );
-              }).catchError((error) {
-                Utility().toastMessage(error.toString());
-              });
-            },
-            icon: Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18.0),
-            child: TextFormField(
-              controller: searchFilter,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: "Search",
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: (String value) {
-                setState(() {});
-              },
-            ),
-          ),
-          SizedBox(height: 33),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              // StreamBuilder listens to real-time updates from the Firestore query
-              stream: usersCollection.snapshots(),
-              builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Center(child: CircularProgressIndicator());
-                } else if (snapshot.hasError) {
-                  return Text("Something went wrong");
-                } else if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return Text("No posts found");
-                } else {
-                  return ListView.builder(
-                    itemCount: snapshot.data!.docs.length,
-                    itemBuilder: (context, index) {
-                      // or
-                      //var title = snapshot.data!.docs[index]["title"].toString().toLowerCase();
-                      //var id = snapshot.data!.docs[index]["id"].toString().toLowerCase();
-                      // or below
-                      var doc = snapshot.data!.docs[index];
-                      var title = doc["title"].toString().toLowerCase();
-                      var id = doc["id"].toString();
+    //  If for some reason there is no user, show a loading screen or error.
+    if (user == null) {
+      return const Scaffold(
+        body: Center(
+          child: Text("User not logged in. Please restart the app."),
+        ),
+      );
+    }
 
-                      // Filter posts based on the search query
-                      if (searchFilter.text.isEmpty || title.contains(searchFilter.text.toLowerCase())) {
-                        return ListTile(
-                         // or  title: Text(snapshot.data!.docs[index]["title"]), and below can also
-                          title: Text(doc["title"]),
-                          subtitle: Text(id),
-                          trailing: PopupMenuButton(
-                            icon: Icon(Icons.more_vert),
-                            itemBuilder: (BuildContext context) {
-                              return [
-                                // Edit post option
-                                PopupMenuItem(
-                                  value: 1,
-                                  child: ListTile(
-                                    onTap: () {
-                                      Navigator.pop(context);
-                                      showUpdateDialog(doc);
-                                    },
-                                    leading: Icon(Icons.edit),
-                                    title: Text("Update"),
-                                  ),
-                                ),
-                                // Delete post option
-                                PopupMenuItem(
-                                  value: 2,
-                                  child: ListTile(
-                                    onTap: () {
-                                      Navigator.pop(context);
-                                      // Remove post from Firestore
-                                      usersCollection.doc(doc.id).delete().then((_) {
-                                        Utility().toastMessage("Deleted Successfully");
-                                      }).catchError((error) {
-                                        Utility().toastMessage(error.toString());
-                                      });
-                                    },
-                                    leading: Icon(Icons.delete),
-                                    title: Text("Delete"),
-                                  ),
-                                ),
-                              ];
-                            },
-                          ),
-                        );
-                      } else {
-                        return Container();
-                      }
-                    },
-                  );
-                }
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(48.0),
-            child: RoundButton(
-              title: "Add",
-              onTap: () {
-                // Navigate to add new data screen
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => AddFirestoreDataScreen(),
-                ));
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Method to show dialog for updating a post
-  void showUpdateDialog(QueryDocumentSnapshot doc) {
-    // Set initial text for edit controller
-    editController.text = doc["title"];
-
-    // Show dialog for editing post title
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Update"),
-          content: TextFormField(
-            controller: editController,
-          ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (a,b)async{
+        await SystemNavigator.pop();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("My Posts in firestore"),
           actions: [
-            TextButton(
+            IconButton(
               onPressed: () {
-                // Update post title in Firestore
-                usersCollection.doc(doc.id).update({
-                  "title": editController.text,
-                }).then((_) {
-                  Utility().toastMessage("Updated Successfully");
-                  Navigator.pop(context);
+                auth.signOut().then((_) {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (context) => const Login()),
+                  );
                 }).catchError((error) {
                   Utility().toastMessage(error.toString());
                 });
               },
-              child: Text("Update"),
+              icon: const Icon(Icons.logout),
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18.0),
+              child: TextFormField(
+                controller: searchFilter,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: "Search my posts",
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (String value) {
+                  setState(() {});
+                },
+              ),
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                // Filter the stream to get only posts from the current user.
+                // We query for documents where 'user_id' matches the logged-in user's uid.
+                stream: usersCollection
+                    .where('user_id', isEqualTo: user.uid)
+                    .snapshots(),
+                builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  } else if (snapshot.hasError) {
+                    return const Center(child: Text("Something went wrong"));
+                  } else if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const Center(child: Text("No posts found. Add one!"));
+                  } else {
+                    return ListView.builder(
+                      itemCount: snapshot.data!.docs.length,
+                      itemBuilder: (context, index) {
+                        var doc = snapshot.data!.docs[index];
+                        // Use .data() to safely access fields, casting to a Map
+                        var data = doc.data() as Map<String, dynamic>;
+                        var title = data['title'].toString().toLowerCase();
+
+                        // Filter posts based on the search query
+                        if (searchFilter.text.isEmpty ||
+                            title.contains(searchFilter.text.toLowerCase())) {
+                          return ListTile(
+                            title: Text(data['title']),
+                            subtitle: Text("Post ID: ${doc.id}"), // Display the document ID
+                            trailing: PopupMenuButton(
+                              icon: const Icon(Icons.more_vert),
+                              itemBuilder: (BuildContext context) {
+                                return [
+                                  PopupMenuItem(
+                                    value: 1,
+                                    child: ListTile(
+                                      onTap: () {
+                                        Navigator.pop(context);
+                                        showUpdateDialog(doc);
+                                      },
+                                      leading: const Icon(Icons.edit),
+                                      title: const Text("Update"),
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 2,
+                                    child: ListTile(
+                                      onTap: () {
+                                        Navigator.pop(context);
+                                        usersCollection.doc(doc.id).delete();
+                                        Utility().toastMessage("Deleted");
+                                      },
+                                      leading: const Icon(Icons.delete),
+                                      title: const Text("Delete"),
+                                    ),
+                                  ),
+                                ];
+                              },
+                            ),
+                          );
+                        } else {
+                          return Container();
+                        }
+                      },
+                    );
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            //  Pass the real user ID to the next screen
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (context) => AddFirestoreDataScreen(userId: user.uid),
+            ));
+          },
+          child: const Icon(Icons.add),
+        ),
+      ),
+    );
+  }
+
+  void showUpdateDialog(QueryDocumentSnapshot doc) {
+    var data = doc.data() as Map<String, dynamic>;
+    editController.text = data['title'];
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Update Post"),
+          content: TextFormField(
+            controller: editController,
+            decoration: const InputDecoration(hintText: "Enter new title"),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
             ),
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                if (editController.text.isNotEmpty) {
+                  usersCollection
+                      .doc(doc.id)
+                      .update({"title": editController.text.trim()}).then((_) {
+                    Utility().toastMessage("Updated Successfully");
+                    Navigator.pop(context);
+                  }).catchError((error) {
+                    Utility().toastMessage(error.toString());
+                  });
+                }
               },
-              child: Text("Cancel"),
+              child: const Text("Update"),
             ),
           ],
         );
