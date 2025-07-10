@@ -1,13 +1,13 @@
 import 'package:fb_app/ui/auth/login.dart';
 import 'package:fb_app/utils/utility.dart';
-import 'package:fb_app/widgets/round_button.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_database/ui/firebase_animated_list.dart';
+import 'package:flutter/services.dart';
 
 import 'add_post.dart';
-//real time data base
+
 class Posts extends StatefulWidget {
   const Posts({super.key});
 
@@ -15,139 +15,242 @@ class Posts extends StatefulWidget {
   State<Posts> createState() => _PostsState();
 }
 
-class _PostsState extends State<Posts> { 
+class _PostsState extends State<Posts> {
   final FirebaseAuth auth = FirebaseAuth.instance;
-  final DatabaseReference ref = FirebaseDatabase.instance.ref("Post");//with ref here post represent as a table we call it node
+  // This ref points to the entire "Post" node (like the whole table)
+  final DatabaseReference ref = FirebaseDatabase.instance.ref("Post");
   final TextEditingController searchFilter = TextEditingController();
   final TextEditingController editCont = TextEditingController();
-  final User? user = FirebaseAuth.instance.currentUser;
 
   @override
   Widget build(BuildContext context) {
-    // Query to fetch posts where user_id matches current user's uid
-    final Query userPostsQuery = ref.orderByChild('user_id').equalTo(user!.uid);
+    // Get the current user. It's important to do this here.
+    final User? user = auth.currentUser;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Posts"),
-        actions: [
-          IconButton(
-            onPressed: () {
-              // Sign out user and navigate back to login screen
-              auth.signOut().then((_) {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (context) => Login()),
-                );
-              }).catchError((error) {
-                Utility().toastMessage(error.toString());
-              });
-            },
-            icon: Icon(Icons.logout),
-          )
-        ],
-      ),
-      body: Column(
-        children: [
-          SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18.0),
-            child: TextFormField(
-              controller: searchFilter,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: "Search",
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: (String value) {
-                setState(() {});
-              },
-            ),
-          ),
-          SizedBox(height: 33),
-          Expanded(
-            child: FirebaseAnimatedList(
-              defaultChild: const Center(
-                child: CircularProgressIndicator(color: Colors.black),
-              ),
-              query: userPostsQuery,
-              itemBuilder: (context, snapshot, animation, index) {
-                // Extract title and id from snapshot data
-                final title = snapshot.child("title").value.toString().toLowerCase();
-                final id = snapshot.child("id").value.toString();
 
-                // Check if search filter is empty or matches post title
-                if (searchFilter.text.isEmpty || title.contains(searchFilter.text.toLowerCase())) {
-                  return ListTile(
-                    title: Text(title),
-                    subtitle: Text(id),
-                    trailing: PopupMenuButton(
-                      icon: Icon(Icons.more_vert),
-                      itemBuilder: (context) => [
-                        // Edit post option
-                        PopupMenuItem(
-                          value: 1,
-                          child: ListTile(
-                            onTap: () {
-                              Navigator.pop(context);
-                              alertMydialog(snapshot.key, snapshot.child("title").value.toString());
-                            },
-                            leading: Icon(Icons.edit),
-                            title: Text("Edit"),
-                          ),
-                        ),
-                         // Delete post option
-                        PopupMenuItem(
-                          value: 2,
-                          child: ListTile(
-                            onTap: () {
-                              Navigator.pop(context);
-                              // Remove post from Firebase
-                              ref.child(snapshot.key!).remove().then((_) {
-                                Utility().toastMessage("Post Deleted");
-                              }).catchError((error) {
-                                Utility().toastMessage(error.toString());
-                              });
-                            },
-                            leading: Icon(Icons.delete),
-                            title: Text("Delete"),
-                          ),
-                        ),
-                      ],
-                    ),
+    // If for some reason there is no user, show a loading screen to prevent errors.
+    if (user == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    // This is the query that filters the database.
+    // It tells Firebase: "Only give me the children of 'Post'
+    // where the 'user_id' field is equal to the current user's UID."
+    final Query userPostsQuery = ref.orderByChild('user_id').equalTo(user.uid);
+
+    // popScope used to out from the app
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) async {
+        await SystemNavigator.pop(); // Close the app
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("My Posts"),
+          actions: [
+            IconButton(
+              onPressed: () {
+                auth.signOut().then((_) {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (context) => const Login()),
                   );
-                } else {
-                  // If search filter doesn't match, return an empty container
-                  return Container();
-                }
+                }).catchError((error) {
+                  Utility().toastMessage(error.toString());
+                });
               },
+              icon: const Icon(Icons.logout),
+            )
+          ],
+        ),
+        body: Column(
+          children: [
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18.0),
+              child: TextFormField(
+                controller: searchFilter,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: "Search",
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (String value) {
+                  setState(() {});
+                },
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(48.0),
-            child: RoundButton(
-              title: "Add Post",
-              onTap: () {
-                // Navigate to add post screen
-                Navigator.of(context).push(MaterialPageRoute(builder: (context) => AddPost()));
-              },
+            const SizedBox(height: 10),
+            Expanded(
+              child: FirebaseAnimatedList(
+                defaultChild: const Center(
+                  child: Text("No posts yet. Add one!"),), // default value
+                // We pass our filtered query
+                // Now, the list will only build items that match the current user's ID.
+                query: userPostsQuery,
+                itemBuilder: (context, snapshot, animation, index) {
+                  // It's safer to check if data exists before trying to access it
+                  if (snapshot.value == null) {
+                    return const SizedBox.shrink(); // Return empty widget if data is null
+                  }
+      
+                  final postData = snapshot.value as Map;
+                  final title = postData['title'].toString().toLowerCase();
+                  final id = postData['id'].toString();
+      
+                  if (searchFilter.text.isEmpty || title.contains(searchFilter.text.toLowerCase())) {
+                    return ListTile(
+                      title: Text(postData['title'].toString()),
+                      subtitle: Text(id),
+                      trailing: PopupMenuButton(
+                        icon: const Icon(Icons.more_vert),
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 1,
+                            child: ListTile(
+                              onTap: () {
+                                Navigator.pop(context);
+                                alertMydialog(snapshot.key, postData['title'].toString());
+                              },
+                              leading: const Icon(Icons.edit),
+                              title: const Text("Edit"),
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 2,
+                            child: ListTile(
+                              onTap: () {
+                                Navigator.pop(context);
+                                // Use the snapshot's key to delete the correct item.
+                                ref.child(snapshot.key!).remove().then((_) {
+                                  Utility().toastMessage("Post Deleted");
+                                }).catchError((error) {
+                                  Utility().toastMessage(error.toString());
+                                });
+                              },
+                              leading: const Icon(Icons.delete),
+                              title: const Text("Delete"),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else {
+                    return Container();
+                  }
+                },
+              ),
             ),
-          ),
-        ],
+      
+      
+            // OR USING  Stream Builder method TO GET(fitch) DATA FROM FIREBASE
+      
+      
+            // Expanded(
+            //   child: StreamBuilder(
+            //     // 1. The stream now listens to your filtered query
+            //     stream: userPostsQuery.onValue,
+            //     builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
+            //
+            //       // 2. Handle the loading state
+            //       if (snapshot.connectionState == ConnectionState.waiting) {
+            //         return const Center(child: CircularProgressIndicator());
+            //       }
+            //
+            //       // 3. Handle errors
+            //       if (snapshot.hasError) {
+            //         return Center(child: Text('Something went wrong: ${snapshot.error}'));
+            //       }
+            //
+            //       // 4. Handle the case where there is no data for this user
+            //       if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
+            //         return const Center(child: Text("No posts found. Add one!"));
+            //       }
+            //
+            //       // 5. If we have data, process and display it
+            //       else {
+            //         // The data comes as a Map where keys are the unique post IDs
+            //         Map<dynamic, dynamic> map = snapshot.data!.snapshot.value as dynamic;
+            //
+            //         // Convert the map's entries into a List to use with ListView.builder
+            //         // Using .entries is great because it gives you both the key and the value
+            //         final postList = map.entries.toList();
+            //
+            //         return ListView.builder(
+            //           itemCount: postList.length,
+            //           itemBuilder: (context, index) {
+            //
+            //             // Get the unique post key (e.g., -NqXy... )
+            //             final postKey = postList[index].key;
+            //
+            //             // Get the post data (a map with 'title', 'id', 'user_id')
+            //             final postData = postList[index].value as Map;
+            //
+            //             final title = postData['title'].toString();
+            //             final id = postData['id'].toString();
+            //
+            //             // Filter for search functionality (optional but good to keep)
+            //             if (searchFilter.text.isEmpty || title.toLowerCase().contains(searchFilter.text.toLowerCase())) {
+            //               return ListTile(
+            //                 title: Text(title),
+            //                 subtitle: Text("ID: $id"),
+            //                 trailing: PopupMenuButton(
+            //                   icon: const Icon(Icons.more_vert),
+            //                   itemBuilder: (context) => [
+            //                     PopupMenuItem(
+            //                       value: 1,
+            //                       onTap: () {
+            //                         // Use the postKey to know which item to edit
+            //                         alertMydialog(postKey, title);
+            //                       },
+            //                       child: const ListTile(
+            //                         leading: Icon(Icons.edit),
+            //                         title: Text("Edit"),
+            //                       ),
+            //                     ),
+            //                     PopupMenuItem(
+            //                       value: 2,
+            //                       onTap: () {
+            //                         // Use the postKey to know which item to delete
+            //                         ref.child(postKey).remove();
+            //                       },
+            //                       child: const ListTile(
+            //                         leading: Icon(Icons.delete),
+            //                         title: Text("Delete"),
+            //                       ),
+            //                     ),
+            //                   ],
+            //                 ),
+            //               );
+            //             } else {
+            //               return Container(); // Hide if it doesn't match search
+            //             }
+            //           },
+            //         );
+            //       }
+            //     },
+            //   ),
+            // ),
+      
+      
+      
+          ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          child: const Icon(Icons.add),
+          onPressed: () {
+            Navigator.of(context).push(MaterialPageRoute(builder: (context) => const AddPost()));
+          },
+        ),
       ),
     );
   }
 
-  // Method to show dialog for editing post
-  Future<void> alertMydialog(String? id, String title) async {
-    // Set initial text for edit controller
+  Future<void> alertMydialog(String? key, String title) async {
     editCont.text = title;
-
-    // Show dialog for editing post title
     return showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text("Update"),
+          title: const Text("Update Post"),
           content: TextFormField(
             controller: editCont,
           ),
@@ -155,22 +258,22 @@ class _PostsState extends State<Posts> {
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                // Update post title in Firebase
-                ref.child(id!).update({
-                  "title": editCont.text,
+              },
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                // Update the post title using its unique key
+                ref.child(key!).update({
+                  "title": editCont.text.trim(),
                 }).then((_) {
                   Utility().toastMessage("Post Updated");
                 }).catchError((error) {
                   Utility().toastMessage(error.toString());
                 });
               },
-              child: Text("Update"),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: Text("Cancel"),
+              child: const Text("Update"),
             ),
           ],
         );
@@ -178,33 +281,3 @@ class _PostsState extends State<Posts> {
     );
   }
 }
-
-// most of the time use this
-// firebase second approach fitch data from server i.e firebase using stream builder
-//         Expanded(
-//           child: StreamBuilder(
-//             stream:ref.onValue,
-//               builder: (context ,AsyncSnapshot<DatabaseEvent>snapshot){
-//               if(!snapshot.hasData){
-//                 return CircularProgressIndicator();
-//               }else{
-//                 Map<dynamic, dynamic> map=snapshot.data!.snapshot.value as dynamic;
-//                 List<dynamic> list=[];
-//                   list.clear();
-//                   list= map.values.toList();
-//                 return ListView.builder(
-//                     itemCount: snapshot.data!.snapshot.children.length,
-//                     itemBuilder: (context ,index){
-//                       return ListTile(
-//                         title: Text(list[index]['title']),
-//                         subtitle: Text(list[index]["id"]),
-//                       );
-//
-//                     });
-//               }
-//
-//               }),
-//         ),
-
-
-
